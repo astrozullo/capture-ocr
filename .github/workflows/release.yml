@@ -1,0 +1,106 @@
+# Builds CaptureOCR.exe on a GitHub-hosted Windows machine and publishes it
+# as a Release, automatically, whenever capture_ocr.pyw changes on main.
+# The release tag is taken from APP_VERSION inside capture_ocr.pyw; if a
+# release with that tag already exists, the run ends without doing anything.
+name: Build and release
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "capture_ocr.pyw"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the release with GITHUB_TOKEN
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Read APP_VERSION from capture_ocr.pyw
+        id: ver
+        shell: pwsh
+        run: |
+          $m = Select-String -Path capture_ocr.pyw -Pattern 'APP_VERSION = "([^"]+)"'
+          if (-not $m) { Write-Error "APP_VERSION not found in capture_ocr.pyw"; exit 1 }
+          $v = $m.Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "APP_VERSION = $v"
+
+      - name: Stop here if release v${{ steps.ver.outputs.version }} already exists
+        id: gate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v${{ steps.ver.outputs.version }}" --repo "$env:GITHUB_REPOSITORY" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release v${{ steps.ver.outputs.version }} already exists: nothing to do. Bump APP_VERSION to publish a new one."
+            "build=false" >> $env:GITHUB_OUTPUT
+          } else {
+            "build=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Set up Python
+        if: steps.gate.outputs.build == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Tesseract (with Italian language data)
+        if: steps.gate.outputs.build == 'true'
+        shell: pwsh
+        run: |
+          choco install -y tesseract
+          $tess = $null
+          foreach ($p in @("C:\Program Files\Tesseract-OCR",
+                           "C:\Program Files (x86)\Tesseract-OCR")) {
+            if (Test-Path "$p\tesseract.exe") { $tess = $p; break }
+          }
+          if (-not $tess) { Write-Error "tesseract.exe not found after choco install"; exit 1 }
+          Write-Host "Tesseract found in: $tess"
+          # Italian traineddata from the official tesseract-ocr/tessdata repo
+          $ok = $false
+          foreach ($branch in @("main", "master")) {
+            try {
+              Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata/raw/$branch/ita.traineddata" `
+                                -OutFile "$tess\tessdata\ita.traineddata"
+              $ok = $true; break
+            } catch { }
+          }
+          if (-not $ok) { Write-Error "Could not download ita.traineddata"; exit 1 }
+          & "$tess\tesseract.exe" --list-langs
+          "TESS_DIR=$tess" >> $env:GITHUB_ENV
+
+      - name: Install Python packages
+        if: steps.gate.outputs.build == 'true'
+        shell: pwsh
+        run: python -m pip install pynput mss pytesseract python-docx pillow pywin32 pyinstaller
+
+      - name: Copy Tesseract next to the script
+        if: steps.gate.outputs.build == 'true'
+        shell: pwsh
+        run: |
+          robocopy "$env:TESS_DIR" "Tesseract-OCR" /E /NFL /NDL /NJH /NJS
+          if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 }
+
+      - name: Build CaptureOCR.exe with PyInstaller
+        if: steps.gate.outputs.build == 'true'
+        shell: pwsh
+        run: python -m PyInstaller --onefile --noconsole --name CaptureOCR --collect-data docx --hidden-import win32timezone --add-data "Tesseract-OCR;Tesseract-OCR" capture_ocr.pyw
+
+      - name: Create the release and attach the executable
+        if: steps.gate.outputs.build == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.ver.outputs.version }}" "dist\CaptureOCR.exe" `
+            --repo "$env:GITHUB_REPOSITORY" `
+            --title "Capture OCR v${{ steps.ver.outputs.version }}" `
+            --generate-notes

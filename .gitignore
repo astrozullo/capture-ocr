@@ -1,0 +1,11 @@
+# Byte-code and PyInstaller build output
+__pycache__/
+build/
+dist/
+*.spec
+
+# Local Tesseract copy created by the build script
+Tesseract-OCR/
+
+# Program log
+capture_ocr_errors.log
