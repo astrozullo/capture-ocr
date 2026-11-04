@@ -1,5 +1,10 @@
 # Capture OCR → Word
 
+[![Latest release](https://img.shields.io/github/v/release/astrozullo/capture-ocr)](https://github.com/astrozullo/capture-ocr/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/astrozullo/capture-ocr/total)](https://github.com/astrozullo/capture-ocr/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-informational)](#requirements)
+
 A background utility for Windows: select a rectangle anywhere on your screen with **ALT + right mouse button**, the program runs OCR (Italian + English by default) on its content and delivers the recognized text, ready to use. Line breaks are preserved.
 
 By default the text is delivered **both ways at once**: copied to the clipboard (plain text, paste it anywhere) and opened in a new, unsaved Microsoft Word document, where words the OCR is unsure about are shown in **red**. No file is written to disk: you decide whether to save. The `OUTPUT_MODE` setting switches to clipboard-only or Word-only.
