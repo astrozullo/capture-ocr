@@ -38,13 +38,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "v${{ steps.ver.outputs.version }}" --repo "$env:GITHUB_REPOSITORY" 2>$null
+          $null = gh release view "v${{ steps.ver.outputs.version }}" --repo "$env:GITHUB_REPOSITORY" 2>&1
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release v${{ steps.ver.outputs.version }} already exists: nothing to do. Bump APP_VERSION to publish a new one."
             "build=false" >> $env:GITHUB_OUTPUT
           } else {
+            Write-Host "No release v${{ steps.ver.outputs.version }} yet: building."
             "build=true" >> $env:GITHUB_OUTPUT
           }
+          exit 0   # the gate itself always succeeds; its output decides
 
       - name: Set up Python
         if: steps.gate.outputs.build == 'true'
